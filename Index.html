@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Deep Bot Group Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      padding: 20px;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .group {
+      background: white;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+    }
+    .group input {
+      width: auto;
+      margin-right: 10px;
+    }
+    .output {
+      margin-top: 20px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 5px;
+      white-space: pre-line;
+    }
+    .highlight {
+      background-color: #fff7a0;
+      font-weight: bold;
+    }
+    .btn {
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px 0;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      cursor: pointer;
+    }
+    .btn-submit { background-color: #007bff; }
+    .btn-clear { background-color: #dc3545; }
+    .btn-copy  { background-color: #28a745; }
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Deep Bot Group Manager</h2>
+
+  <input id="inputField" type="text" placeholder="Enter like 1,2 into 50 @ -1 into 0">
+  <div class="button-row">
+    <button class="btn btn-submit" onclick="processInput()">Submit</button>
+  </div>
+
+  <input id="deleteGroupId" type="number" placeholder="Enter group ID to delete">
+  <button onclick="deleteGroupById()">Delete Group By ID</button>
+
+  <div id="groups"></div>
+  <div class="output" id="total"></div>
+
+  <input id="finalTotal" type="number" placeholder="Enter final total manually">
+
+  <div class="button-row">
+    <button class="btn btn-clear" onclick="clearAll()">Clear All</button>
+    <button class="btn btn-copy" id="copyBtn" onclick="copyOutput()">Copy Output</button>
+  </div>
+
+  <script>
+    let groups = [];
+    let groupId = 1;
+
+    function processInput() {
+      const input = document.getElementById('inputField').value.trim();
+      const entries = input.split('@').map(e => e.trim()).filter(Boolean);
+
+      for (let entry of entries) {
+        const match = entry.match(/^([\-\d\s,\/]+)\s+into\s+([\d\s,\/]+)$/i);
+        if (!match) {
+          alert(`Invalid entry: "${entry}"\nUse like: 1,2 into 5 OR -1 into 0`);
+          continue;
+        }
+
+        const numPart = match[1];
+        const amtPart = match[2];
+        const isCancel = numPart.includes('-');
+
+        const rawNumbers = numPart.split(/[\s,\/-]+/).map(n => n.trim()).filter(Boolean);
+        const rawAmounts = amtPart.split(/[\s,\/]+/).map(n => n.trim()).filter(Boolean);
+
+        const numbers = rawNumbers.map(n => parseInt(n)).filter(n => !isNaN(n) && n >= 0);
+        const amounts = rawAmounts.map(n => parseInt(n)).filter(n => !isNaN(n) && n > 0);
+
+        if (numbers.length === 0 || (amounts.length === 0 && !isCancel)) {
+          alert(`Invalid numbers/amounts in entry: "${entry}"`);
+          continue;
+        }
+
+        if (isCancel) {
+          rawNumbers.forEach(raw => {
+            const num = parseInt(raw);
+            if (!isNaN(num)) {
+              groups.forEach(group => {
+                group.numbers = group.numbers.filter(n => n !== num);
+              });
+            }
+          });
+        } else {
+          if (amounts.length === 1) {
+            groups.push({ id: groupId++, numbers: numbers, amount: amounts[0] });
+          } else if (amounts.length === numbers.length) {
+            for (let i = 0; i < numbers.length; i++) {
+              groups.push({ id: groupId++, numbers: [numbers[i]], amount: amounts[i] });
+            }
+          } else {
+            alert(`Mismatch in numbers and amounts in entry: "${entry}"`);
+            continue;
+          }
+        }
+      }
+
+      render();
+    }
+
+    function editGroup(id) {
+      const nums = document.getElementById(`nums-${id}`).value.trim();
+      const amt = parseInt(document.getElementById(`amt-${id}`).value.trim());
+      if (amt <= 0) return alert("Amount must be positive");
+
+      const numbers = nums.split(/[\/,\-]/).map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n >= 0);
+      const group = groups.find(g => g.id === id);
+      if (group) {
+        group.numbers = numbers;
+        group.amount = amt;
+      }
+      render();
+    }
+
+    function deleteGroup(id) {
+      groups = groups.filter(g => g.id !== id);
+      render();
+    }
+
+    function deleteGroupById() {
+      const id = parseInt(document.getElementById('deleteGroupId').value.trim());
+      if (!id || isNaN(id)) return alert("Enter valid group ID");
+      deleteGroup(id);
+    }
+
+    function clearAll() {
+      if (confirm("Are you sure you want to clear all groups?")) {
+        groups = [];
+        groupId = 1;
+        document.getElementById('finalTotal').value = '';
+        render();
+      }
+    }
+
+    function render() {
+      const container = document.getElementById('groups');
+      container.innerHTML = '';
+      let total = 0;
+      const numberAmountMap = {}; // key = number, value = total amount
+
+      groups.forEach(group => {
+        total += group.numbers.length * group.amount;
+        group.numbers.forEach(num => {
+          if (!numberAmountMap[num]) numberAmountMap[num] = 0;
+          numberAmountMap[num] += group.amount;
+        });
+
+        container.innerHTML += `
+          <div class="group">
+            <strong>Group ${group.id}</strong><br>
+            Numbers: <input id="nums-${group.id}" value="${group.numbers.join(',')}">
+            Amount: <input id="amt-${group.id}" value="${group.amount}" type="number">
+            <button onclick="editGroup(${group.id})">Update</button>
+            <button onclick="deleteGroup(${group.id})">Delete</button>
+          </div>
+        `;
+      });
+
+      // Group numbers by final amount
+      const amountGroups = {};
+      for (let num in numberAmountMap) {
+        const amt = numberAmountMap[num];
+        if (!amountGroups[amt]) amountGroups[amt] = [];
+        amountGroups[amt].push(parseInt(num));
+      }
+
+      const lines = Object.keys(amountGroups)
+        .map(amt => {
+          const nums = amountGroups[amt].sort((a, b) => a - b).join(', ');
+          return `${nums} into ₹${amt}`;
+        });
+
+      const summaryLine = lines.join('\n');
+      const manualTotal = document.getElementById('finalTotal').value.trim();
+
+      let finalText = `Groups:\n${summaryLine}\n\nOverall Total = ₹${total}`;
+      if (manualTotal) {
+        finalText += `\nFinal Total (Manual) = ₹${manualTotal}`;
+      }
+
+      document.getElementById('total').innerText = finalText;
+      document.getElementById('copyBtn').dataset.raw = finalText;
+    }
+
+    function copyOutput() {
+      const raw = document.getElementById('copyBtn').dataset.raw || '';
+      navigator.clipboard.writeText(raw)
+        .then(() => alert("✅ Summary copied to clipboard!"))
+        .catch(() => alert("❌ Copy failed. Try again."));
+    }
+  </script>
+</body>
+</html>
